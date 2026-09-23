@@ -35,3 +35,49 @@ PRODUCT_FACTORY = {
     "Kazookles": "The Other Factory"
 }
 
+
+# ---------------------------------------------------------
+# FACTORY LOCATIONS
+# ---------------------------------------------------------
+
+FACTORY_LOCATIONS = {
+    "Lot's O' Nuts": (32.881893, -111.768036),
+    "Wicked Choccy's": (32.076176, -81.088371),
+    "Sugar Shack": (48.119140, -96.181150),
+    "Secret Factory": (41.446333, -90.565487),
+    "The Other Factory": (35.117500, -89.971107)
+}
+
+
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
+
+def load_data(file_path):
+
+    df = pd.read_csv(file_path)
+
+    # Remove extra spaces from column names
+    df.columns = df.columns.str.strip()
+
+    # Remove duplicate records
+    df = df.drop_duplicates()
+
+    # Clean text columns
+    text_columns = df.select_dtypes(include="object").columns
+
+    for col in text_columns:
+        df[col] = df[col].astype(str).str.strip()
+
+    # Convert dates
+    df["Order Date"] = pd.to_datetime(
+        df["Order Date"],
+        format="%d-%m-%Y",
+        errors="coerce"
+    )
+
+    df["Ship Date"] = pd.to_datetime(
+        df["Ship Date"],
+        format="%d-%m-%Y",
+        errors="coerce"
+    )
