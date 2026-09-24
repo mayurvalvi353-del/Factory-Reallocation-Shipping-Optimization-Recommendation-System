@@ -81,3 +81,62 @@ def load_data(file_path):
         format="%d-%m-%Y",
         errors="coerce"
     )
+
+# -----------------------------------------------------
+    # LEAD TIME
+    # -----------------------------------------------------
+
+    df["Lead Time"] = (
+        df["Ship Date"] - df["Order Date"]
+    ).dt.days
+
+    # Flag suspicious dates
+    df["Lead Time Anomaly"] = (
+        (df["Lead Time"] < 0) |
+        (df["Lead Time"] > 365)
+    )
+
+    # -----------------------------------------------------
+    # FACTORY
+    # -----------------------------------------------------
+
+    df["Factory"] = df["Product Name"].map(PRODUCT_FACTORY)
+
+    # -----------------------------------------------------
+    # PROFIT FEATURES
+    # -----------------------------------------------------
+
+    df["Profit Margin (%)"] = np.where(
+        df["Sales"] != 0,
+        (df["Gross Profit"] / df["Sales"]) * 100,
+        0
+    )
+
+    df["Sales Per Unit"] = np.where(
+        df["Units"] != 0,
+        df["Sales"] / df["Units"],
+        0
+    )
+
+    df["Profit Per Unit"] = np.where(
+        df["Units"] != 0,
+        df["Gross Profit"] / df["Units"],
+        0
+    )
+
+    # -----------------------------------------------------
+    # DATE FEATURES
+    # -----------------------------------------------------
+
+    df["Order Year"] = df["Order Date"].dt.year
+    df["Order Month"] = df["Order Date"].dt.month
+    df["Order Day"] = df["Order Date"].dt.day
+    df["Order Quarter"] = df["Order Date"].dt.quarter
+
+    return df
+
+
+# ---------------------------------------------------------
+# TRAIN MACHINE LEARNING MODEL
+# ---------------------------------------------------------
+
