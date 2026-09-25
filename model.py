@@ -140,3 +140,117 @@ def load_data(file_path):
 # TRAIN MACHINE LEARNING MODEL
 # ---------------------------------------------------------
 
+def train_model(df):
+
+    # Use only reasonable lead-time records
+    model_df = df[
+        (df["Lead Time"] >= 0) &
+        (df["Lead Time"] <= 365)
+    ].copy()
+
+    features = [
+        "Product Name",
+        "Customer Region",
+        "Ship Mode",
+        "Factory",
+        "Units",
+        "Sales",
+        "Cost",
+        "Order Month",
+        "Order Quarter"
+    ]
+
+    target = "Lead Time"
+
+    model_df = model_df.dropna(
+        subset=features + [target]
+    )
+
+    X = model_df[features]
+    y = model_df[target]
+
+    categorical_features = [
+        "Product Name",
+        "Customer Region",
+        "Ship Mode",
+        "Factory"
+    ]
+
+    numeric_features = [
+        "Units",
+        "Sales",
+        "Cost",
+        "Order Month",
+        "Order Quarter"
+    ]
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            (
+                "categorical",
+                OneHotEncoder(
+                    handle_unknown="ignore"
+                ),
+                categorical_features
+            ),
+            (
+                "numeric",
+                "passthrough",
+                numeric_features
+            )
+        ]
+    )
+
+model = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            (
+                "regressor",
+                RandomForestRegressor(
+                    n_estimators=100,
+                    random_state=42,
+                    n_jobs=-1
+                )
+            )
+        ]
+    )
+
+X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42
+    )
+
+model.fit(X_train, y_train)
+
+predictions = model.predict(X_test)
+
+mae = mean_absolute_error(
+        y_test,
+        predictions
+    )
+
+rmse = np.sqrt(
+        mean_squared_error(
+            y_test,
+            predictions
+        )
+    )
+
+r2 = r2_score(
+        y_test,
+        predictions
+    )
+
+metrics = {
+        "MAE": mae,
+        "RMSE": rmse,
+        "R2": r2
+    }
+
+return model, metrics
+
+# ---------------------------------------------------------
+# FACTORY ANALYSIS
+# ---------------------------------------------------------
