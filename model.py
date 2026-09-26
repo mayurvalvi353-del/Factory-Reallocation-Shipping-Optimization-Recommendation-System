@@ -184,6 +184,7 @@ def train_model(df):
         "Order Quarter"
     ]
 
+    # Preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
             (
@@ -201,9 +202,13 @@ def train_model(df):
         ]
     )
 
-model = Pipeline(
+    # Machine Learning Pipeline
+    model = Pipeline(
         steps=[
-            ("preprocessor", preprocessor),
+            (
+                "preprocessor",
+                preprocessor
+            ),
             (
                 "regressor",
                 RandomForestRegressor(
@@ -215,42 +220,112 @@ model = Pipeline(
         ]
     )
 
-X_train, X_test, y_train, y_test = train_test_split(
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
         test_size=0.2,
         random_state=42
     )
 
-model.fit(X_train, y_train)
+    # Train model
+    model.fit(
+        X_train,
+        y_train
+    )
 
-predictions = model.predict(X_test)
+    # Predictions
+    predictions = model.predict(X_test)
 
-mae = mean_absolute_error(
+    # MAE
+    mae = mean_absolute_error(
         y_test,
         predictions
     )
 
-rmse = np.sqrt(
+    # RMSE
+    rmse = np.sqrt(
         mean_squared_error(
             y_test,
             predictions
         )
     )
 
-r2 = r2_score(
+    # R2 Score
+    r2 = r2_score(
         y_test,
         predictions
     )
 
-metrics = {
+    # Store metrics
+    metrics = {
         "MAE": mae,
         "RMSE": rmse,
         "R2": r2
     }
 
-return model, metrics
+    return model, metrics
 
 # ---------------------------------------------------------
 # FACTORY ANALYSIS
 # ---------------------------------------------------------
+
+def factory_analysis(df):
+
+    result = df.groupby("Factory").agg(
+        Orders=("Order ID", "count"),
+        Sales=("Sales", "sum"),
+        Profit=("Gross Profit", "sum"),
+        Average_Lead_Time=("Lead Time", "mean")
+    ).reset_index()
+
+    result["Profit Margin (%)"] = np.where(
+        result["Sales"] != 0,
+        result["Profit"] / result["Sales"] * 100,
+        0
+    )
+
+    return result
+
+
+# ---------------------------------------------------------
+# FACTORY RECOMMENDATION
+# ---------------------------------------------------------
+
+def recommend_factory(
+    df,
+    product,
+    region,
+    ship_mode,
+    units,
+    sales,
+    cost,
+    month
+):
+
+    available_factories = list(
+        FACTORY_LOCATIONS.keys()
+    )
+
+    recommendations = []
+
+    for factory in available_factories:
+
+        input_data = pd.DataFrame([{
+            "Product Name": product,
+            "Customer Region": region,
+            "Ship Mode": ship_mode,
+            "Factory": factory,
+            "Units": units,
+            "Sales": sales,
+            "Cost": cost,
+            "Order Month": month,
+            "Order Quarter": ((month - 1) // 3) + 1
+        }])
+
+        recommendations.append({
+            "Factory": factory,
+            "Predicted Lead Time": 0
+        })
+
+    return pd.DataFrame(recommendations)
