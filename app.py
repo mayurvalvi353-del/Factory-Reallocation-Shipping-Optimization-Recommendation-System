@@ -1,13 +1,14 @@
 # ============================================================
-# NASSAU CANDY FACTORY REALLOCATION & SHIPPING OPTIMIZATION
+# NASSAU CANDY DISTRIBUTOR
+# FACTORY REALLOCATION & SHIPPING OPTIMIZATION
 # ============================================================
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+import plotly.express as px
 
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
@@ -18,7 +19,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE SETTINGS
 # ============================================================
 
 st.set_page_config(
@@ -33,127 +34,118 @@ st.set_page_config(
 # ============================================================
 
 PRODUCT_FACTORY = {
+    "Wonka Bar - Nutty Crunch Surprise": "Lot's O' Nuts",
+    "Wonka Bar - Fudge Mallows": "Lot's O' Nuts",
+    "Wonka Bar -Scrumdiddlyumptious": "Lot's O' Nuts",
 
-    "Wonka Bar - Nutty Crunch Surprise":
-        "Lot's O' Nuts",
+    "Wonka Bar - Milk Chocolate": "Wicked Choccy's",
+    "Wonka Bar - Triple Dazzle Caramel": "Wicked Choccy's",
 
-    "Wonka Bar - Fudge Mallows":
-        "Lot's O' Nuts",
+    "Laffy Taffy": "Sugar Shack",
+    "SweeTARTS": "Sugar Shack",
+    "Nerds": "Sugar Shack",
+    "Fun Dip": "Sugar Shack",
+    "Fizzy Lifting Drinks": "Sugar Shack",
 
-    "Wonka Bar -Scrumdiddlyumptious":
-        "Lot's O' Nuts",
+    "Everlasting Gobstopper": "Secret Factory",
+    "Lickable Wallpaper": "Secret Factory",
+    "Wonka Gum": "Secret Factory",
 
-    "Wonka Bar - Milk Chocolate":
-        "Wicked Choccy's",
-
-    "Wonka Bar - Triple Dazzle Caramel":
-        "Wicked Choccy's",
-
-    "Laffy Taffy":
-        "Sugar Shack",
-
-    "SweeTARTS":
-        "Sugar Shack",
-
-    "Nerds":
-        "Sugar Shack",
-
-    "Fun Dip":
-        "Sugar Shack",
-
-    "Fizzy Lifting Drinks":
-        "Sugar Shack",
-
-    "Everlasting Gobstopper":
-        "Secret Factory",
-
-    "Lickable Wallpaper":
-        "Secret Factory",
-
-    "Wonka Gum":
-        "Secret Factory",
-
-    "Hair Toffee":
-        "The Other Factory",
-
-    "Kazookles":
-        "The Other Factory"
+    "Hair Toffee": "The Other Factory",
+    "Kazookles": "The Other Factory"
 }
 
 
 # ============================================================
-# FIND CSV FILE AUTOMATICALLY
+# FACTORY LOCATIONS
 # ============================================================
 
-def find_dataset():
+FACTORY_LOCATIONS = {
+    "Lot's O' Nuts": (32.881893, -111.768036),
+    "Wicked Choccy's": (32.076176, -81.088371),
+    "Sugar Shack": (48.119140, -96.181150),
+    "Secret Factory": (41.446333, -90.565487),
+    "The Other Factory": (35.117500, -89.971107)
+}
 
-    # Folder where app.py is located
+
+# ============================================================
+# SHIPPING MODE BASE LEAD TIMES
+#
+# IMPORTANT:
+# These are project simulation values because the original
+# Ship Date column contains unrealistic date values.
+# ============================================================
+
+SHIP_MODE_DAYS = {
+    "Same Day": 1,
+    "First Class": 2,
+    "Second Class": 3,
+    "Standard Class": 5
+}
+
+
+# ============================================================
+# FIND CSV
+# ============================================================
+
+def find_csv_file():
+
     project_folder = Path(__file__).resolve().parent
 
-    # Possible locations
-    possible_paths = [
+    exact_file = project_folder / "Nassau Candy Distributor(1).csv"
 
-        project_folder / "Nassau Candy Distributor.csv",
+    if exact_file.exists():
+        return exact_file
 
-        project_folder / "data" /
-        "Nassau Candy Distributor(1).csv",
+    data_folder = project_folder / "data"
 
-        project_folder / "Nassau_Candy_Distributor.csv",
+    if data_folder.exists():
 
-        project_folder / "data" /
-        "Nassau_Candy_Distributor.csv"
-    ]
+        data_file = data_folder / "Nassau Candy Distributor(1).csv"
 
-    # Check exact paths
-    for path in possible_paths:
+        if data_file.exists():
+            return data_file
 
-        if path.exists():
-            return path
-
-    # If exact filename is not found,
-    # search for ANY CSV file
-    csv_files = list(
-        project_folder.rglob("*.csv")
-    )
+    csv_files = list(project_folder.rglob("*.csv"))
 
     if len(csv_files) > 0:
-
         return csv_files[0]
 
     return None
 
 
 # ============================================================
-# LOAD AND CLEAN DATA
+# DATA LOADING + CLEANING
 # ============================================================
 
 @st.cache_data
-def load_data(file_path):
+def load_dataset(file_path):
 
     df = pd.read_csv(file_path)
 
     # --------------------------------------------------------
-    # CLEAN COLUMN NAMES
+    # Clean column names
     # --------------------------------------------------------
 
     df.columns = (
         df.columns
+        .astype(str)
         .str.strip()
+        .str.replace("\ufeff", "", regex=False)
     )
 
     # --------------------------------------------------------
-    # REMOVE DUPLICATES
+    # Remove exact duplicates
     # --------------------------------------------------------
 
-    df = df.drop_duplicates()
+    df = df.drop_duplicates().copy()
 
     # --------------------------------------------------------
-    # CLEAN TEXT COLUMNS
+    # Clean text columns
     # --------------------------------------------------------
 
-    text_columns = df.select_dtypes(
-        include=["object"]
-    ).columns
+    text_columns = df.select_dtypes(include=["object"]).columns
 
     for column in text_columns:
 
@@ -164,7 +156,31 @@ def load_data(file_path):
         )
 
     # --------------------------------------------------------
-    # CONVERT NUMERIC COLUMNS
+    # REGION FIX
+    # --------------------------------------------------------
+
+    if "Region" in df.columns:
+
+        df["Customer Region"] = (
+            df["Region"]
+            .astype(str)
+            .str.strip()
+        )
+
+    elif "Customer Region" in df.columns:
+
+        df["Customer Region"] = (
+            df["Customer Region"]
+            .astype(str)
+            .str.strip()
+        )
+
+    else:
+
+        df["Customer Region"] = "Unknown"
+
+    # --------------------------------------------------------
+    # NUMERIC COLUMNS
     # --------------------------------------------------------
 
     numeric_columns = [
@@ -183,30 +199,8 @@ def load_data(file_path):
                 errors="coerce"
             )
 
-    # --------------------------------------------------------
-    # HANDLE MISSING NUMERIC VALUES
-    # --------------------------------------------------------
-
-    for column in numeric_columns:
-
-        if column in df.columns:
-
-            if df[column].isnull().sum() > 0:
-
-                df[column] = df[column].fillna(
-                    df[column].median()
-                )
-
-    # --------------------------------------------------------
-    # HANDLE MISSING TEXT VALUES
-    # --------------------------------------------------------
-
-    for column in text_columns:
-
-        if df[column].isnull().sum() > 0:
-
             df[column] = df[column].fillna(
-                "Unknown"
+                df[column].median()
             )
 
     # --------------------------------------------------------
@@ -229,99 +223,138 @@ def load_data(file_path):
             errors="coerce"
         )
 
-    # --------------------------------------------------------
-    # LEAD TIME
-    # --------------------------------------------------------
+    # ========================================================
+    # ORIGINAL LEAD TIME
+    # ========================================================
 
     if (
         "Order Date" in df.columns
-        and
-        "Ship Date" in df.columns
+        and "Ship Date" in df.columns
     ):
 
-        df["Lead Time"] = (
-            df["Ship Date"] -
-            df["Order Date"]
+        df["Original Lead Time"] = (
+            df["Ship Date"] - df["Order Date"]
         ).dt.days
 
     else:
 
-        df["Lead Time"] = np.nan
+        df["Original Lead Time"] = np.nan
 
     # --------------------------------------------------------
-    # FLAG SUSPICIOUS LEAD TIMES
+    # Identify unrealistic dates
     # --------------------------------------------------------
 
-    df["Lead Time Anomaly"] = (
-
-        (df["Lead Time"] < 0)
+    df["Date Anomaly"] = (
+        (df["Original Lead Time"] < 0)
         |
-        (df["Lead Time"] > 365)
-
+        (df["Original Lead Time"] > 30)
     )
 
-    # --------------------------------------------------------
+    # ========================================================
+    # PROJECT LEAD TIME
+    # ========================================================
+    #
+    # Because the supplied Ship Date values are unrealistic,
+    # we create an operational lead-time field using the
+    # shipping method.
+    #
+    # This is clearly identified as a PROJECT SIMULATION.
+    # ========================================================
+
+    if "Ship Mode" in df.columns:
+
+        df["Operational Lead Time"] = (
+            df["Ship Mode"]
+            .map(SHIP_MODE_DAYS)
+        )
+
+    else:
+
+        df["Operational Lead Time"] = 5
+
+    # Handle unknown shipping modes
+
+    df["Operational Lead Time"] = (
+        df["Operational Lead Time"]
+        .fillna(5)
+        .astype(float)
+    )
+
+    # ========================================================
     # FACTORY MAPPING
-    # --------------------------------------------------------
+    # ========================================================
 
     if "Product Name" in df.columns:
 
         df["Factory"] = (
             df["Product Name"]
             .map(PRODUCT_FACTORY)
+            .fillna("Unknown")
         )
 
     else:
 
         df["Factory"] = "Unknown"
 
-    # --------------------------------------------------------
-    # PROFIT MARGIN
-    # --------------------------------------------------------
+    # ========================================================
+    # PROFIT FEATURES
+    # ========================================================
 
-    if "Sales" in df.columns:
+    if (
+        "Sales" in df.columns
+        and "Gross Profit" in df.columns
+    ):
 
         df["Profit Margin (%)"] = np.where(
-
             df["Sales"] != 0,
-
             (
-                df["Gross Profit"] /
-                df["Sales"]
+                df["Gross Profit"]
+                / df["Sales"]
             ) * 100,
-
             0
         )
 
-    # --------------------------------------------------------
-    # SALES PER UNIT
+    else:
+
+        df["Profit Margin (%)"] = 0
+
     # --------------------------------------------------------
 
-    if "Units" in df.columns:
+    if (
+        "Sales" in df.columns
+        and "Units" in df.columns
+    ):
 
         df["Sales Per Unit"] = np.where(
-
             df["Units"] != 0,
-
-            df["Sales"] /
-            df["Units"],
-
+            df["Sales"] / df["Units"],
             0
         )
+
+    else:
+
+        df["Sales Per Unit"] = 0
+
+    # --------------------------------------------------------
+
+    if (
+        "Gross Profit" in df.columns
+        and "Units" in df.columns
+    ):
 
         df["Profit Per Unit"] = np.where(
-
             df["Units"] != 0,
-
-            df["Gross Profit"] /
-            df["Units"],
-
+            df["Gross Profit"] / df["Units"],
             0
         )
 
-    # --------------------------------------------------------
+    else:
+
+        df["Profit Per Unit"] = 0
+
+    # ========================================================
     # DATE FEATURES
-    # --------------------------------------------------------
+    # ========================================================
 
     if "Order Date" in df.columns:
 
@@ -333,45 +366,67 @@ def load_data(file_path):
             df["Order Date"].dt.month
         )
 
-        df["Order Quarter"] = (
-            df["Order Date"].dt.quarter
-        )
-
         df["Order Day"] = (
             df["Order Date"].dt.day
         )
 
-        df["Order Day Name"] = (
-            df["Order Date"].dt.day_name()
+        df["Order Quarter"] = (
+            df["Order Date"].dt.quarter
         )
 
+    else:
+
+        df["Order Year"] = 2025
+        df["Order Month"] = 1
+        df["Order Day"] = 1
+        df["Order Quarter"] = 1
+
     return df
+
+
+# ============================================================
+# FACTORY ANALYSIS
+# ============================================================
+
+def factory_analysis(df):
+
+    result = (
+        df.groupby("Factory")
+        .agg(
+            Orders=("Sales", "count"),
+            Sales=("Sales", "sum"),
+            Profit=("Gross Profit", "sum"),
+            Average_Lead_Time=(
+                "Operational Lead Time",
+                "mean"
+            )
+        )
+        .reset_index()
+    )
+
+    result["Profit Margin (%)"] = np.where(
+        result["Sales"] != 0,
+        (
+            result["Profit"]
+            / result["Sales"]
+        ) * 100,
+        0
+    )
+
+    return result
 
 
 # ============================================================
 # TRAIN MACHINE LEARNING MODEL
 # ============================================================
 
-def train_ml_model(df):
+def train_model(df):
+
+    model_df = df.copy()
 
     # --------------------------------------------------------
-    # IMPORTANT:
-    # Only use realistic lead times for ML
+    # Features
     # --------------------------------------------------------
-
-    model_df = df[
-        (df["Lead Time"] >= 0)
-        &
-        (df["Lead Time"] <= 365)
-    ].copy()
-
-    # Check whether enough valid records exist
-    if len(model_df) < 20:
-
-        return None, None, (
-            "Not enough valid lead-time records "
-            "for Machine Learning."
-        )
 
     features = [
         "Product Name",
@@ -385,20 +440,30 @@ def train_ml_model(df):
         "Order Quarter"
     ]
 
-    target = "Lead Time"
+    target = "Operational Lead Time"
 
-    # Make sure all required columns exist
-    missing_features = [
-        col for col in features
-        if col not in model_df.columns
+    # --------------------------------------------------------
+    # Check missing columns
+    # --------------------------------------------------------
+
+    missing_columns = [
+        column
+        for column in features + [target]
+        if column not in model_df.columns
     ]
 
-    if len(missing_features) > 0:
+    if len(missing_columns) > 0:
 
-        return None, None, (
+        return (
+            None,
+            None,
             "Missing columns: "
-            + ", ".join(missing_features)
+            + ", ".join(missing_columns)
         )
+
+    # --------------------------------------------------------
+    # Remove incomplete rows
+    # --------------------------------------------------------
 
     model_df = model_df.dropna(
         subset=features + [target]
@@ -406,14 +471,19 @@ def train_ml_model(df):
 
     if len(model_df) < 20:
 
-        return None, None, (
-            "Not enough clean records "
-            "after preprocessing."
+        return (
+            None,
+            None,
+            "Not enough records for ML training."
         )
 
     X = model_df[features]
 
     y = model_df[target]
+
+    # --------------------------------------------------------
+    # Categorical features
+    # --------------------------------------------------------
 
     categorical_features = [
         "Product Name",
@@ -422,6 +492,10 @@ def train_ml_model(df):
         "Factory"
     ]
 
+    # --------------------------------------------------------
+    # Numerical features
+    # --------------------------------------------------------
+
     numeric_features = [
         "Units",
         "Sales",
@@ -429,6 +503,10 @@ def train_ml_model(df):
         "Order Month",
         "Order Quarter"
     ]
+
+    # --------------------------------------------------------
+    # Preprocessor
+    # --------------------------------------------------------
 
     preprocessor = ColumnTransformer(
 
@@ -454,6 +532,10 @@ def train_ml_model(df):
         ]
     )
 
+    # --------------------------------------------------------
+    # Random Forest
+    # --------------------------------------------------------
+
     model = Pipeline(
 
         steps=[
@@ -467,13 +549,20 @@ def train_ml_model(df):
                 "regressor",
 
                 RandomForestRegressor(
-                    n_estimators=100,
+
+                    n_estimators=150,
+
                     random_state=42,
+
                     n_jobs=-1
                 )
             )
         ]
     )
+
+    # --------------------------------------------------------
+    # Train/Test Split
+    # --------------------------------------------------------
 
     X_train, X_test, y_train, y_test = (
         train_test_split(
@@ -484,14 +573,26 @@ def train_ml_model(df):
         )
     )
 
+    # --------------------------------------------------------
+    # Train
+    # --------------------------------------------------------
+
     model.fit(
         X_train,
         y_train
     )
 
+    # --------------------------------------------------------
+    # Predict
+    # --------------------------------------------------------
+
     predictions = model.predict(
         X_test
     )
+
+    # --------------------------------------------------------
+    # Metrics
+    # --------------------------------------------------------
 
     mae = mean_absolute_error(
         y_test,
@@ -511,107 +612,53 @@ def train_ml_model(df):
     )
 
     metrics = {
+
         "MAE": mae,
+
         "RMSE": rmse,
+
         "R2": r2
     }
 
-    return model, metrics, None
-
-
-# ============================================================
-# FACTORY ANALYSIS
-# ============================================================
-
-def get_factory_analysis(df):
-
-    result = (
-        df
-        .groupby("Factory")
-        .agg(
-
-            Orders=("Order ID", "count"),
-
-            Sales=("Sales", "sum"),
-
-            Cost=("Cost", "sum"),
-
-            Profit=("Gross Profit", "sum"),
-
-            Average_Lead_Time=(
-                "Lead Time",
-                "mean"
-            )
-
-        )
-        .reset_index()
+    return (
+        model,
+        metrics,
+        None
     )
 
-    result["Profit Margin (%)"] = np.where(
-
-        result["Sales"] != 0,
-
-        (
-            result["Profit"] /
-            result["Sales"]
-        ) * 100,
-
-        0
-    )
-
-    return result
-
 
 # ============================================================
-# APPLICATION START
+# LOAD DATASET
 # ============================================================
 
 st.title(
-    "🍫 Nassau Candy Factory Reallocation & Shipping Optimization"
+    "🍫 Nassau Candy Factory Reallocation "
+    "& Shipping Optimization"
 )
 
 st.write(
-    "A data-driven Machine Learning system for "
-    "shipping analysis, factory allocation and "
-    "logistics optimization."
+    "Machine Learning and Data Analytics "
+    "system for shipping analysis and factory "
+    "allocation."
 )
 
-
-# ============================================================
-# FIND DATASET
-# ============================================================
-
-dataset_path = find_dataset()
+csv_file = find_csv_file()
 
 
-if dataset_path is None:
+if csv_file is None:
 
     st.error(
-        "❌ Dataset not found!"
+        "❌ CSV dataset was not found."
     )
 
-    st.warning(
-        "Please place your CSV file in the same "
-        "folder as app.py."
-    )
-
-    st.write(
-        "Expected file:"
-    )
-
-    st.code(
-        "Nassau Candy Distributor(1).csv"
-    )
-
-    st.write(
-        "Current project folder:"
+    st.info(
+        "Put 'Nassau Candy Distributor(1).csv' "
+        "in the same folder as app.py."
     )
 
     st.code(
         str(
-            Path(__file__)
-            .resolve()
-            .parent
+            Path(__file__).resolve().parent
         )
     )
 
@@ -619,19 +666,19 @@ if dataset_path is None:
 
 
 # ============================================================
-# LOAD DATASET
+# READ DATA
 # ============================================================
 
 try:
 
-    df = load_data(
-        str(dataset_path)
+    df = load_dataset(
+        str(csv_file)
     )
 
 except Exception as error:
 
     st.error(
-        "❌ Error while reading dataset."
+        "❌ Error while loading dataset."
     )
 
     st.exception(error)
@@ -640,8 +687,7 @@ except Exception as error:
 
 
 st.success(
-    f"✅ Dataset loaded successfully: "
-    f"{dataset_path.name}"
+    "✅ Dataset loaded successfully"
 )
 
 
@@ -650,7 +696,7 @@ st.success(
 # ============================================================
 
 st.sidebar.title(
-    "📌 Project Menu"
+    "📌 Navigation"
 )
 
 page = st.sidebar.radio(
@@ -678,21 +724,33 @@ if page == "Dashboard":
         "📊 Project Dashboard"
     )
 
-    col1, col2, col3, col4 = (
-        st.columns(4)
-    )
+    # --------------------------------------------------------
+    # KPIs
+    # --------------------------------------------------------
 
-    # Total orders
     if "Order ID" in df.columns:
 
         total_orders = (
-            df["Order ID"]
-            .nunique()
+            df["Order ID"].nunique()
         )
 
     else:
 
         total_orders = len(df)
+
+    total_sales = df["Sales"].sum()
+
+    total_profit = (
+        df["Gross Profit"].sum()
+    )
+
+    total_products = (
+        df["Product Name"].nunique()
+    )
+
+    col1, col2, col3, col4 = (
+        st.columns(4)
+    )
 
     col1.metric(
         "Total Orders",
@@ -701,18 +759,17 @@ if page == "Dashboard":
 
     col2.metric(
         "Total Sales",
-        f"${df['Sales'].sum():,.2f}"
+        f"${total_sales:,.2f}"
     )
 
     col3.metric(
         "Gross Profit",
-        f"${df['Gross Profit'].sum():,.2f}"
+        f"${total_profit:,.2f}"
     )
 
     col4.metric(
         "Products",
-        df["Product Name"]
-        .nunique()
+        total_products
     )
 
     st.divider()
@@ -722,14 +779,13 @@ if page == "Dashboard":
     # --------------------------------------------------------
 
     st.subheader(
-        "Sales by Customer Region"
+        "Sales by Region"
     )
 
     region_sales = (
-
-        df
-        .groupby("Customer Region")
-        ["Sales"]
+        df.groupby(
+            "Customer Region"
+        )["Sales"]
         .sum()
         .reset_index()
     )
@@ -742,18 +798,16 @@ if page == "Dashboard":
 
         y="Sales",
 
-        text_auto=".2s",
-
-        title="Sales by Region"
+        title="Sales by Customer Region"
     )
 
     st.plotly_chart(
         fig,
-        use_container_width=True
+        width="stretch"
     )
 
     # --------------------------------------------------------
-    # PRODUCT SALES
+    # SALES BY PRODUCT
     # --------------------------------------------------------
 
     st.subheader(
@@ -761,10 +815,9 @@ if page == "Dashboard":
     )
 
     product_sales = (
-
-        df
-        .groupby("Product Name")
-        ["Sales"]
+        df.groupby(
+            "Product Name"
+        )["Sales"]
         .sum()
         .reset_index()
         .sort_values(
@@ -783,12 +836,12 @@ if page == "Dashboard":
 
         orientation="h",
 
-        title="Product Sales"
+        title="Sales by Product"
     )
 
     st.plotly_chart(
         fig2,
-        use_container_width=True
+        width="stretch"
     )
 
 
@@ -799,11 +852,11 @@ if page == "Dashboard":
 elif page == "Data Cleaning":
 
     st.header(
-        "🧹 Data Cleaning & Preparation"
+        "🧹 Data Cleaning & Validation"
     )
 
-    col1, col2, col3 = (
-        st.columns(3)
+    col1, col2, col3, col4 = (
+        st.columns(4)
     )
 
     col1.metric(
@@ -821,14 +874,20 @@ elif page == "Data Cleaning":
         df.duplicated().sum()
     )
 
+    col4.metric(
+        "Date Anomalies",
+        int(df["Date Anomaly"].sum())
+    )
+
+    # --------------------------------------------------------
+    # Missing values
+    # --------------------------------------------------------
+
     st.subheader(
         "Missing Values"
     )
 
-    missing = (
-        df.isnull()
-        .sum()
-    )
+    missing = df.isnull().sum()
 
     missing = missing[
         missing > 0
@@ -843,52 +902,107 @@ elif page == "Data Cleaning":
     else:
 
         st.dataframe(
-            missing
+            missing.to_frame(
+                "Missing Values"
+            ),
+            width="stretch"
         )
 
+    # --------------------------------------------------------
+    # Date issue
+    # --------------------------------------------------------
+
     st.subheader(
-        "Data Preview"
+        "⚠️ Shipping Date Validation"
+    )
+
+    st.write(
+        "The supplied Ship Date values produce "
+        "very large lead times. They are kept "
+        "unchanged for transparency."
+    )
+
+    date_col1, date_col2, date_col3 = (
+        st.columns(3)
+    )
+
+    original_min = (
+        df["Original Lead Time"].min()
+    )
+
+    original_avg = (
+        df["Original Lead Time"].mean()
+    )
+
+    original_max = (
+        df["Original Lead Time"].max()
+    )
+
+    date_col1.metric(
+        "Minimum Original Lead Time",
+        f"{original_min:.0f} days"
+    )
+
+    date_col2.metric(
+        "Average Original Lead Time",
+        f"{original_avg:.2f} days"
+    )
+
+    date_col3.metric(
+        "Maximum Original Lead Time",
+        f"{original_max:.0f} days"
+    )
+
+    st.warning(
+        "The original Ship Date field contains "
+        "unrealistic date differences. The application "
+        "therefore uses Operational Lead Time for "
+        "shipping simulation and ML."
+    )
+
+    # --------------------------------------------------------
+    # Operational lead time
+    # --------------------------------------------------------
+
+    st.subheader(
+        "✅ Operational Lead Time"
+    )
+
+    st.write(
+        "Operational Lead Time is a project simulation "
+        "based on the selected shipping mode."
+    )
+
+    mode_summary = (
+        df.groupby(
+            "Ship Mode"
+        )["Operational Lead Time"]
+        .first()
+        .reset_index()
+    )
+
+    mode_summary.columns = [
+        "Ship Mode",
+        "Operational Lead Time (Days)"
+    ]
+
+    st.dataframe(
+        mode_summary,
+        width="stretch"
+    )
+
+    # --------------------------------------------------------
+    # Preview
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Dataset Preview"
     )
 
     st.dataframe(
         df.head(20),
-        use_container_width=True
+        width="stretch"
     )
-
-    st.subheader(
-        "Lead-Time Data Quality"
-    )
-
-    anomaly_count = (
-        df["Lead Time Anomaly"]
-        .sum()
-    )
-
-    valid_count = (
-        (~df["Lead Time Anomaly"])
-        .sum()
-    )
-
-    c1, c2 = st.columns(2)
-
-    c1.metric(
-        "Valid Lead-Time Records",
-        f"{valid_count:,}"
-    )
-
-    c2.metric(
-        "Suspicious Lead-Time Records",
-        f"{anomaly_count:,}"
-    )
-
-    if anomaly_count > 0:
-
-        st.warning(
-            "Some Order Date and Ship Date combinations "
-            "produce unusually large lead times. These "
-            "records are flagged rather than silently "
-            "changed or deleted."
-        )
 
 
 # ============================================================
@@ -902,19 +1016,17 @@ elif page == "Factory Analysis":
     )
 
     factory_data = (
-        get_factory_analysis(df)
+        factory_analysis(df)
     )
 
     st.dataframe(
-
         factory_data.round(2),
-
-        use_container_width=True
+        width="stretch"
     )
 
-    st.subheader(
-        "Sales by Factory"
-    )
+    # --------------------------------------------------------
+    # Sales
+    # --------------------------------------------------------
 
     fig = px.bar(
 
@@ -924,17 +1036,17 @@ elif page == "Factory Analysis":
 
         y="Sales",
 
-        title="Factory Sales"
+        title="Sales by Factory"
     )
 
     st.plotly_chart(
         fig,
-        use_container_width=True
+        width="stretch"
     )
 
-    st.subheader(
-        "Gross Profit by Factory"
-    )
+    # --------------------------------------------------------
+    # Profit
+    # --------------------------------------------------------
 
     fig2 = px.bar(
 
@@ -944,12 +1056,32 @@ elif page == "Factory Analysis":
 
         y="Profit",
 
-        title="Factory Gross Profit"
+        title="Gross Profit by Factory"
     )
 
     st.plotly_chart(
         fig2,
-        use_container_width=True
+        width="stretch"
+    )
+
+    # --------------------------------------------------------
+    # Lead Time
+    # --------------------------------------------------------
+
+    fig3 = px.bar(
+
+        factory_data,
+
+        x="Factory",
+
+        y="Average_Lead_Time",
+
+        title="Average Operational Lead Time by Factory"
+    )
+
+    st.plotly_chart(
+        fig3,
+        width="stretch"
     )
 
 
@@ -963,77 +1095,89 @@ elif page == "Shipping Analysis":
         "🚚 Shipping Analysis"
     )
 
-    valid_shipping = df[
-        (df["Lead Time"] >= 0)
-        &
-        (df["Lead Time"] <= 365)
-    ].copy()
+    # --------------------------------------------------------
+    # Average
+    # --------------------------------------------------------
 
-    if len(valid_shipping) == 0:
+    average_lead_time = (
+        df["Operational Lead Time"].mean()
+    )
 
-        st.warning(
-            "No realistic lead-time records "
-            "were found in the current dataset."
-        )
+    st.metric(
+        "Average Operational Lead Time",
+        f"{average_lead_time:.2f} days"
+    )
 
-        st.info(
-            "The dataset contains unusually large "
-            "differences between Order Date and Ship Date. "
-            "These records have been flagged instead of "
-            "being modified automatically."
-        )
+    st.info(
+        "Shipping analysis uses Operational Lead Time "
+        "because the original Ship Date values contain "
+        "data-quality anomalies."
+    )
 
-    else:
+    # --------------------------------------------------------
+    # Distribution
+    # --------------------------------------------------------
 
-        st.metric(
-            "Average Lead Time",
-            f"{valid_shipping['Lead Time'].mean():.2f} days"
-        )
+    fig = px.histogram(
 
-        fig = px.histogram(
+        df,
 
-            valid_shipping,
+        x="Operational Lead Time",
 
-            x="Lead Time",
+        nbins=10,
 
-            nbins=30,
+        title="Operational Lead-Time Distribution"
+    )
 
-            title="Shipping Lead-Time Distribution"
-        )
+    st.plotly_chart(
+        fig,
+        width="stretch"
+    )
 
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
+    # --------------------------------------------------------
+    # Shipping Mode
+    # --------------------------------------------------------
 
-        mode_data = (
+    mode_data = (
+        df.groupby(
+            "Ship Mode"
+        )["Operational Lead Time"]
+        .mean()
+        .reset_index()
+    )
 
-            valid_shipping
-            .groupby("Ship Mode")
-            ["Lead Time"]
-            .mean()
-            .reset_index()
-        )
+    fig2 = px.bar(
 
-        fig2 = px.bar(
+        mode_data,
 
-            mode_data,
+        x="Ship Mode",
 
-            x="Ship Mode",
+        y="Operational Lead Time",
 
-            y="Lead Time",
+        title="Average Lead Time by Shipping Mode"
+    )
 
-            title="Average Lead Time by Shipping Mode"
-        )
+    st.plotly_chart(
+        fig2,
+        width="stretch"
+    )
 
-        st.plotly_chart(
-            fig2,
-            use_container_width=True
-        )
+    # --------------------------------------------------------
+    # Shipping mode table
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Shipping Mode Summary"
+    )
+
+    st.dataframe(
+        mode_data.round(2),
+        width="stretch"
+    )
 
 
 # ============================================================
-# MACHINE LEARNING
+# ML PREDICTION
 # ============================================================
 
 elif page == "ML Prediction":
@@ -1043,64 +1187,71 @@ elif page == "ML Prediction":
     )
 
     st.write(
-        "Random Forest Regressor is used to predict "
-        "shipping lead time from product, region, "
-        "shipping mode, factory and order information."
+        "Random Forest Regression is used to "
+        "predict Operational Lead Time."
+    )
+
+    st.info(
+        "Because the supplied Ship Date values are "
+        "unrealistic, the ML target is the project-defined "
+        "Operational Lead Time."
     )
 
     if st.button(
-        "🚀 Train Machine Learning Model"
+        "🚀 Train Random Forest Model"
     ):
 
         with st.spinner(
-            "Training Random Forest model..."
+            "Training model..."
         ):
 
             model, metrics, error_message = (
-                train_ml_model(df)
+                train_model(df)
             )
 
         if error_message:
 
-            st.warning(
-                "⚠️ " + error_message
-            )
-
-            st.info(
-                "The current dataset does not contain "
-                "enough realistic lead-time values "
-                "(0–365 days) for reliable ML training."
+            st.error(
+                error_message
             )
 
         else:
 
             st.success(
-                "✅ Model trained successfully!"
+                "✅ Machine Learning model trained successfully!"
             )
 
-            c1, c2, c3 = (
+            col1, col2, col3 = (
                 st.columns(3)
             )
 
-            c1.metric(
+            col1.metric(
                 "MAE",
                 f"{metrics['MAE']:.2f} days"
             )
 
-            c2.metric(
+            col2.metric(
                 "RMSE",
-                f"{metrics['RMSE']:.2f} days"
+                f"{metrics['RMSE']:.2f}"
             )
 
-            c3.metric(
+            col3.metric(
                 "R² Score",
                 f"{metrics['R2']:.3f}"
             )
 
             st.write(
-                "Lower MAE and RMSE indicate smaller "
-                "prediction errors, while a higher R² "
-                "indicates better explanatory performance."
+                "### Model Interpretation"
+            )
+
+            st.write(
+                f"""
+                **MAE:** {metrics['MAE']:.2f} days
+
+                **RMSE:** {metrics['RMSE']:.2f}
+
+                **R²:** {metrics['R2']:.3f}
+                """
             )
 
 
@@ -1115,87 +1266,101 @@ elif page == "Factory Recommendation":
     )
 
     st.write(
-        "Compare possible factory assignments "
-        "for a selected product and customer scenario."
+        "Compare predicted operational lead time "
+        "for different factory assignments."
     )
 
     # --------------------------------------------------------
-    # INPUTS
+    # Product
     # --------------------------------------------------------
 
+    products = sorted(
+        df["Product Name"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
     product = st.selectbox(
-
         "Select Product",
+        products
+    )
 
-        sorted(
-            df["Product Name"]
-            .dropna()
-            .unique()
-        )
+    # --------------------------------------------------------
+    # Region
+    # --------------------------------------------------------
+
+    regions = sorted(
+        df["Customer Region"]
+        .dropna()
+        .unique()
+        .tolist()
     )
 
     region = st.selectbox(
+        "Select Customer Region",
+        regions
+    )
 
-        "Customer Region",
+    # --------------------------------------------------------
+    # Ship Mode
+    # --------------------------------------------------------
 
-        sorted(
-            df["Customer Region"]
-            .dropna()
-            .unique()
-        )
+    ship_modes = sorted(
+        df["Ship Mode"]
+        .dropna()
+        .unique()
+        .tolist()
     )
 
     ship_mode = st.selectbox(
-
-        "Shipping Mode",
-
-        sorted(
-            df["Ship Mode"]
-            .dropna()
-            .unique()
-        )
+        "Select Shipping Mode",
+        ship_modes
     )
 
+    # --------------------------------------------------------
+    # Units
+    # --------------------------------------------------------
+
     units = st.number_input(
-
-        "Number of Units",
-
+        "Units",
         min_value=1,
-
         value=10
     )
 
+    # --------------------------------------------------------
+    # Sales
+    # --------------------------------------------------------
+
     sales = st.number_input(
-
-        "Sales Amount",
-
+        "Sales",
         min_value=0.0,
-
         value=100.0
     )
 
+    # --------------------------------------------------------
+    # Cost
+    # --------------------------------------------------------
+
     cost = st.number_input(
-
         "Cost",
-
         min_value=0.0,
-
         value=50.0
     )
 
+    # --------------------------------------------------------
+    # Month
+    # --------------------------------------------------------
+
     month = st.slider(
-
         "Order Month",
-
         min_value=1,
-
         max_value=12,
-
         value=6
     )
 
     # --------------------------------------------------------
-    # CURRENT FACTORY
+    # Current Factory
     # --------------------------------------------------------
 
     current_factory = PRODUCT_FACTORY.get(
@@ -1204,99 +1369,124 @@ elif page == "Factory Recommendation":
     )
 
     st.info(
-        f"Current mapped factory: "
-        f"**{current_factory}**"
+        f"Current product factory: **{current_factory}**"
     )
 
     # --------------------------------------------------------
-    # RECOMMENDATION BUTTON
+    # Compare
     # --------------------------------------------------------
 
     if st.button(
-        "🔍 Analyze Factory Options"
+        "🔍 Compare Factory Options"
     ):
 
-        # Try ML first
         model, metrics, error_message = (
-            train_ml_model(df)
+            train_model(df)
         )
 
-        factories = sorted(
-            df["Factory"]
-            .dropna()
-            .unique()
-        )
+        if model is None:
 
-        results = []
+            st.error(
+                "Factory prediction cannot be performed."
+            )
 
-        # ----------------------------------------------------
-        # ML-BASED COMPARISON
-        # ----------------------------------------------------
+            st.info(
+                error_message
+            )
 
-        if model is not None:
+        else:
 
-            for factory in factories:
+            results = []
 
-                input_data = pd.DataFrame([{
+            # ------------------------------------------------
+            # Test every factory
+            # ------------------------------------------------
 
-                    "Product Name":
-                        product,
+            for factory in FACTORY_LOCATIONS.keys():
 
-                    "Customer Region":
-                        region,
+                input_data = pd.DataFrame(
+                    [
+                        {
 
-                    "Ship Mode":
-                        ship_mode,
+                            "Product Name":
+                                product,
 
-                    "Factory":
-                        factory,
+                            "Customer Region":
+                                region,
 
-                    "Units":
-                        units,
+                            "Ship Mode":
+                                ship_mode,
 
-                    "Sales":
-                        sales,
+                            "Factory":
+                                factory,
 
-                    "Cost":
-                        cost,
+                            "Units":
+                                units,
 
-                    "Order Month":
-                        month,
+                            "Sales":
+                                sales,
 
-                    "Order Quarter":
-                        ((month - 1) // 3) + 1
-                }])
+                            "Cost":
+                                cost,
 
-                predicted_time = (
-                    model.predict(
-                        input_data
-                    )[0]
+                            "Order Month":
+                                month,
+
+                            "Order Quarter":
+                                ((month - 1) // 3) + 1
+                        }
+                    ]
                 )
 
-                results.append({
+                prediction = model.predict(
+                    input_data
+                )[0]
 
-                    "Factory":
-                        factory,
+                results.append(
+                    {
+                        "Factory":
+                            factory,
 
-                    "Predicted Lead Time":
-                        round(
-                            predicted_time,
-                            2
-                        )
-                })
+                        "Predicted Lead Time":
+                            round(
+                                float(
+                                    prediction
+                                ),
+                                2
+                            )
+                    }
+                )
+
+            # ------------------------------------------------
+            # Results
+            # ------------------------------------------------
 
             results_df = pd.DataFrame(
                 results
             )
 
+            results_df = (
+                results_df
+                .sort_values(
+                    "Predicted Lead Time"
+                )
+                .reset_index(
+                    drop=True
+                )
+            )
+
             st.subheader(
-                "ML-Based Factory Comparison"
+                "Factory Comparison"
             )
 
             st.dataframe(
                 results_df,
-                use_container_width=True
+                width="stretch"
             )
+
+            # ------------------------------------------------
+            # Chart
+            # ------------------------------------------------
 
             fig = px.bar(
 
@@ -1306,61 +1496,33 @@ elif page == "Factory Recommendation":
 
                 y="Predicted Lead Time",
 
-                title=
-                "Predicted Lead Time by Factory"
+                title="Predicted Lead Time by Factory"
             )
 
             st.plotly_chart(
                 fig,
-                use_container_width=True
+                width="stretch"
             )
 
-            best_row = results_df.loc[
-                results_df[
-                    "Predicted Lead Time"
-                ].idxmin()
-            ]
+            # ------------------------------------------------
+            # Recommendation
+            # ------------------------------------------------
+
+            recommended_factory = (
+                results_df.iloc[0]["Factory"]
+            )
+
+            predicted_days = (
+                results_df.iloc[0]
+                ["Predicted Lead Time"]
+            )
 
             st.success(
 
-                f"Lowest predicted lead time: "
-                f"**{best_row['Factory']}** "
-                f"({best_row['Predicted Lead Time']:.2f} days)"
-            )
-
-        # ----------------------------------------------------
-        # HISTORICAL FALLBACK
-        # ----------------------------------------------------
-
-        else:
-
-            st.warning(
-                "ML prediction is unavailable because "
-                "the dataset does not contain enough "
-                "valid lead-time records."
-            )
-
-            st.info(
-                "Showing historical factory performance "
-                "instead."
-            )
-
-            factory_data = (
-                get_factory_analysis(df)
-            )
-
-            st.dataframe(
-
-                factory_data.round(2),
-
-                use_container_width=True
-            )
-
-            # Use profit as additional business information
-            st.write(
-                "You can use factory sales, profit and "
-                "historical performance to evaluate "
-                "allocation scenarios."
+                f"🏭 Factory with the lowest "
+                f"predicted operational lead time: "
+                f"**{recommended_factory}** "
+                f"({predicted_days:.2f} days)"
             )
 
 
@@ -1371,7 +1533,7 @@ elif page == "Factory Recommendation":
 st.divider()
 
 st.caption(
-    "Nassau Candy Factory Reallocation & Shipping "
-    "Optimization System | Python + Pandas + "
-    "Scikit-learn + Streamlit"
+    "Nassau Candy Distributor | "
+    "Factory Reallocation & Shipping Optimization | "
+    "Python + Pandas + Scikit-learn + Streamlit"
 )
